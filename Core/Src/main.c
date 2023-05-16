@@ -61,6 +61,7 @@
 	int len;
 
 	int GoToSleep = 0;
+	int DataReady = 0;
 	int DataReadyForTx = 0;
 
 
@@ -189,7 +190,7 @@ int main(void)
   HAL_UART_Transmit(&huart2, (uint8_t*)". ", 2, 10);
 
   ClearBuffer();
-  HAL_UART_Receive_IT(&huart1, RecievedData, 1);
+  HAL_UART_Receive_IT(&huart1, RecievedData, 30);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -199,7 +200,37 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  if (DataReady){
+			GPSData gpsData; // Laver et instance af vores struct
+			parseNMEA(RecievedData, &gpsData);
+			// Access the parsed values
+			// Altitude
+			len = snprintf(buffer, sizeof(buffer), "Altitude: %.2f\r\n", gpsData.altitude);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
 
+			// Latitude
+			len = snprintf(buffer, sizeof(buffer), "Latitude: %.5f\r\n", gpsData.latitude);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+			// Latitude Area
+			len = snprintf(buffer, sizeof(buffer), "Latitude Area: %c\r\n", gpsData.latitudeArea);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+			// Longitude
+			len = snprintf(buffer, sizeof(buffer), "Longitude: %.5f\r\n", gpsData.longitude);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+			// Longitude Area
+			len = snprintf(buffer, sizeof(buffer), "Longitude Area: %c\r\n", gpsData.longitudeArea);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+			// Fix
+			len = snprintf(buffer, sizeof(buffer), "Fix: %d\r\n", gpsData.fix);
+			HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+			DataReady = 0;
+			ActivateInterrupt();
+	  }
 	  if (gpsData.fix){
 		  // if fix = 1, har vi en position, og vi kan sende vores position
 		  // Power down af GPS?
@@ -215,6 +246,9 @@ int main(void)
 
   }
   /* USER CODE END 3 */
+  str = "test4 \r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+
 }
 
 /**
@@ -431,6 +465,16 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 
+void ActivateInterrupt() {
+	memset(RecievedData,0, 30);
+	HAL_UART_Receive_IT (&huart1, RecievedData, 30);		//re-starting interrupt
+	// Fix
+	len = snprintf(buffer, sizeof(buffer), "interrupt activated \r\n");
+	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+}
+
+
+
 
 
 void parseNMEA(char* msg, GPSData* data) {
@@ -485,46 +529,12 @@ void parseNMEA(char* msg, GPSData* data) {
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 	// This has been soft defined in HAL, and can be redefined here.
-	HAL_UART_Receive_IT(&huart1, RecievedData, 70);
+	HAL_UART_Receive_IT(&huart1, RecievedData, 30);
 	HAL_UART_Transmit(&huart2, (uint8_t*)"Interrupt received data: ", 25, 100);
-	len = snprintf(buffer, sizeof(buffer), RecievedData);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, 100);
-	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 100);
+	HAL_UART_Transmit(&huart2, RecievedData,  strlen(RecievedData), 100);
+	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n\r\n", 2, 100);
 
-	GPSData gpsData; // Laver et instance af vores struct
-	parseNMEA(RecievedData, &gpsData);
-	// Access the parsed values
-	// Altitude
-	len = snprintf(buffer, sizeof(buffer), "Altitude: %.2f\r\n", gpsData.altitude);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	// Latitude
-	len = snprintf(buffer, sizeof(buffer), "Latitude: %.5f\r\n", gpsData.latitude);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	// Latitude Area
-	len = snprintf(buffer, sizeof(buffer), "Latitude Area: %c\r\n", gpsData.latitudeArea);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	// Longitude
-	len = snprintf(buffer, sizeof(buffer), "Longitude: %.5f\r\n", gpsData.longitude);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	// Longitude Area
-	len = snprintf(buffer, sizeof(buffer), "Longitude Area: %c\r\n", gpsData.longitudeArea);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	// Fix
-	len = snprintf(buffer, sizeof(buffer), "Fix: %d\r\n", gpsData.fix);
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-	memset(RecievedData,0, 30);
-	HAL_UART_Receive_IT(&huart1, RecievedData, 700);		//re-starting interrupt
-	// Fix
-	len = snprintf(buffer, sizeof(buffer), "Restat interrupt\r\n");
-	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-
-
+	DataReady = 1;
 	}
 
 void ClearBuffer(void){
