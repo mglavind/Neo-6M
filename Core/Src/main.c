@@ -18,13 +18,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,13 +31,13 @@
 	HAL_StatusTypeDef ret = HAL_OK; // This is for use in a Clear buffer function, to check if Uart is ready.
 	char cmd[100] = "command \r\n";
 	char TermMsg[100] = "Message to terminal \r\n";
-	uint8_t RecievedData[700] = {0};
+	uint8_t RecievedData[70] = {0};
 	uint8_t c[2] = {0};
 
 
 
 	float WakeupTimebase = 16.0 / 32.0; 	// or (float)16 / (float)32
-	float SleepTimeSeconds = 60.0; 		// Here the sleep time is defined in seconds
+	float SleepTimeSeconds = 120.0; 		// Here the sleep time is defined in seconds
 	float WakeUpCounter; 					// The counter is defined, but cannot be calculated before main()
 	char WakeUpCounterHex[10]; 			// The hex string for the counter is defined
 	uint32_t WakeUpCounterUint;
@@ -63,6 +62,7 @@
 
 	int GoToSleep = 0;
 	int DataReadyForTx = 0;
+
 
 
 /* USER CODE END PTD */
@@ -94,6 +94,8 @@ static void MX_USART2_UART_Init(void);
 static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 void parseNMEA(char* msg, GPSData* data);
+void EnterStandbyMode();
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,6 +112,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
 	WakeUpCounter = SleepTimeSeconds / WakeupTimebase; 	// Wakeup counter is calculated now
 	WakeUpCounterUint = (uint32_t)WakeUpCounter; // The Wakeup counter is converted to hex
+
 
   /* USER CODE END 1 */
 
@@ -136,7 +139,19 @@ int main(void)
   MX_USART2_UART_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
+
+  //
+  //LoraInit();
+  char *str = "test1 \r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+
   GPSData gpsData; // Laver et instance af vores struct
+  gpsData.fix = 0;
+
+
+  str = "test2 \r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
 
 
 
@@ -158,7 +173,7 @@ int main(void)
   	  }
 
   	  /** Disable the WWAKEUP PIN **/
-  	  HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);  // disable PA0
+  	  //HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);  // disable PA0
 
   	  /** Deactivate the RTC wakeup  **/
   	  HAL_RTCEx_DeactivateWakeUpTimer(&hrtc);
@@ -166,9 +181,15 @@ int main(void)
 
 
 
+  str = "test3 \r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, 1);
 
+  HAL_Delay(3000);
+  HAL_UART_Transmit(&huart2, (uint8_t*)". ", 2, 10);
 
   ClearBuffer();
+  HAL_UART_Receive_IT(&huart1, RecievedData, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -179,19 +200,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  //HAL_Delay(3000);
-	  //HAL_UART_Transmit(&huart2, (uint8_t*)". ", 2, 10);
-	  //ClearBuffer();
-	  //HAL_UART_Receive_IT(&huart1, RecievedData, 700);
-
-
 	  if (gpsData.fix){
 		  // if fix = 1, har vi en position, og vi kan sende vores position
 		  // Power down af GPS?
 		  char *str = "We got a fix! \r\n";
 		  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
 		  // Handle Lora, Sæt GoToSleep til 1, hvis success med Tx.
-
+		  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, 0);
 	  }
 
 	  if (GoToSleep) {
@@ -384,6 +399,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin_Pin */
   GPIO_InitStruct.Pin = B1_Pin_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
@@ -397,65 +415,81 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : GPS_PWR_Pin */
+  GPIO_InitStruct.Pin = GPS_PWR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPS_PWR_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
+/* USER CODE BEGIN 4 */
+
+
+
+
 void parseNMEA(char* msg, GPSData* data) {
     char* token;
     token = strtok(msg, ",");
     int count = 0;
 
-    // Check the first token for "$GPGGA"
-    if (strcmp(token, "$GPGGA") != 0) {
-        len = snprintf(buffer, sizeof(buffer), "unknown NMEA message \n");
-        HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
-        return;
+    if (strcmp(token, "$GPGGA")) {
+		while (token != NULL) {
+			count++;
+			switch (count) {
+				case 2:
+					// Process altitude value
+					data->altitude = atof(token);
+					break;
+				case 3:
+					// Process latitude value
+					data->latitude = atof(token);
+					break;
+				case 4:
+					// Process latitude area value
+					data->latitudeArea = token[0];
+					break;
+				case 5:
+					// Process longitude value
+					data->longitude = atof(token);
+					break;
+				case 6:
+					// Process longitude area value
+					data->longitudeArea = token[0];
+					break;
+				case 7:
+					// Process fix value
+					data->fix = atoi(token);
+					break;
+				}
+			token = strtok(NULL, ",");
+		}
+    }
+    else {
+    	len = snprintf(buffer, sizeof(buffer), "unknown NMEA message \n");
+		HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
     }
 
-    while (token != NULL) {
-        count++;
-        switch (count) {
-            case 2:
-                // Process altitude value
-                data->altitude = atof(token);
-                break;
-            case 3:
-                // Process latitude value
-                data->latitude = atof(token);
-                break;
-            case 4:
-                // Process latitude area value
-                data->latitudeArea = token[0];
-                break;
-            case 5:
-                // Process longitude value
-                data->longitude = atof(token);
-                break;
-            case 6:
-                // Process longitude area value
-                data->longitudeArea = token[0];
-                break;
-            case 7:
-                // Process fix value
-                data->fix = atoi(token);
-                break;
-        }
-        token = strtok(NULL, ",");
-    }
 }
 
-/* USER CODE BEGIN 4 */
+
+
+
+
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 	// This has been soft defined in HAL, and can be redefined here.
-	HAL_UART_Receive_IT(&huart1, RecievedData, 300);
+	HAL_UART_Receive_IT(&huart1, RecievedData, 70);
 	HAL_UART_Transmit(&huart2, (uint8_t*)"Interrupt received data: ", 25, 100);
-	HAL_UART_Transmit(&huart2, RecievedData,  strlen(RecievedData), 100);
-	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n\r\n", 2, 100);
-
+	len = snprintf(buffer, sizeof(buffer), RecievedData);
+	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, 100);
+	HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 100);
 
 	GPSData gpsData; // Laver et instance af vores struct
 	parseNMEA(RecievedData, &gpsData);
@@ -483,8 +517,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	// Fix
 	len = snprintf(buffer, sizeof(buffer), "Fix: %d\r\n", gpsData.fix);
 	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
 	memset(RecievedData,0, 30);
-	HAL_UART_Receive_IT (&huart1, RecievedData, 30);		//re-starting interrupt
+	HAL_UART_Receive_IT(&huart1, RecievedData, 700);		//re-starting interrupt
+	// Fix
+	len = snprintf(buffer, sizeof(buffer), "Restat interrupt\r\n");
+	HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+
 	}
 
 void ClearBuffer(void){
